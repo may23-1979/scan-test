@@ -6,23 +6,22 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '0 0 * * 0'   # 毎週日曜
+    - cron: '0 0 * * 0'
 
 permissions:
   actions:  read
   contents: read
-  security-events: write   # SARIF アップロード権限
+  security-events: write
 
 ###############################################################################
-# 1) CodeQL ─ GitHub Actions (YAML) のみ解析
+# 1) CodeQL ─ GitHub Actions (YAML) など
 ###############################################################################
 jobs:
   codeql:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: [ "actions" ]        # JS/TS を CodeQL でも解析したい場合は
-                                       # ["actions","javascript-typescript"] に
+        language: [ "actions" ]           # 必要なら "javascript-typescript" を追加
     steps:
       - uses: actions/checkout@v3
 
@@ -34,31 +33,29 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL analysis
+      - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析（Composer 不要）
+# 2) Semgrep ─ PHP / JS / TS を解析
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
-    # PHP・JS・TS のいずれかが存在する場合のみ実行
-    if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
     steps:
       - uses: actions/checkout@v3
 
-      # ---- Semgrep スキャン ----
+      # ---------------- Semgrep 実行 ----------------
       - name: Run Semgrep (OWASP Top 10 rules)
         id: semgrep
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
         uses: returntocorp/semgrep-action@v1
         with:
-          config: p/owasp-top-ten      # 代表的ルールセット
-          generateSarif: "yes"         # semgrep.sarif を生成
-          # ↑ 独自ルールを使う場合は config: "./.semgrep" などに変更
+          config: p/owasp-top-ten
+          generateSarif: "yes"
 
-      # ---- SARIF アップロード ----
-      - name: Upload SARIF (Semgrep)
-        if: success() || failure()      # 脆弱性検出で non-zero でも必ず実行
+      # --------------- SARIF アップロード --------------
+      - name: Upload Semgrep SARIF
+        if: ${{ steps.semgrep.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
