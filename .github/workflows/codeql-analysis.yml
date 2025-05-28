@@ -1,0 +1,51 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    # プルリクエストも対象（対象ブランチはmain）
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # 毎週日曜（0 0 * * 0）に定期実行
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read            # ワークフローの内容を参照（GitHub Actionsの解析用）
+      contents: read           # コードチェックアウトに必要
+      security-events: write   # セキュリティスキャン結果（アラート）のアップロードに必要
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 解析対象の言語をマトリクスで指定（複数言語を並列解析）
+        # Laravel(PHP)のみの場合はCodeQL対応言語がないため、ここではGitHub Actionsワークフローを解析対象に設定
+        language: [ 'actions' ]  # 他にJSコード等があれば 'javascript-typescript' なども追加
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up PHP 8.2
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        tools: composer  # Composer CLI をインストール
+
+    - name: Install PHP dependencies (Composer)
+      run: composer install --no-scripts --no-progress
+
+    # CodeQLのツールを初期化。解析対象言語にマトリクス変数を使用
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        # ※ PHPは指定不可。actionsを指定するとGitHub Actionsワークフローのセキュリティ分析を実施
+
+    # 解析を実行し、結果をGitHubにアップロード
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
