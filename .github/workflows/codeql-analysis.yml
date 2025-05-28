@@ -27,7 +27,7 @@ jobs:
       matrix:
         # PHP は未サポートなので 'actions' のみ解析。
         # JavaScript など追加する場合は ["actions", "javascript-typescript"] などに編集。
-        language: [ "actions" ]
+        language: [ "actions", "javascript-typescript" ] 
 
     steps:
     # 1) リポジトリをチェックアウト
