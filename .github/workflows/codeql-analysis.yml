@@ -47,13 +47,21 @@ jobs:
       - uses: actions/checkout@v3
 
       # ── Semgrep を実行して SARIF を出力
-      - name: Run Semgrep (OWASP Top 10)
+
+
+      # --- Semgrep 実行（PHP / JS / TS）----------------------------
+      - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
-        run: |
-          # OWASP Top-10 ルールセットを使い SARIF 生成
-          semgrep ci --config=p/owasp-top-ten \
-                     --sarif --output=semgrep.sarif \
-                     || true                     # 脆弱性検出で exit 1 → 続行
+    run: |
+    semgrep ci \
+      --config=p/owasp-top-ten \          # 既存 JS/TS 用
+      --config=p/phpcs-security-audit \   # ★ PHP セキュリティ専用
+      --config=p/security-audit \         # ★ 汎用セキュリティ
+      --sarif --output=semgrep.sarif \
+      || true                             # 脆弱性で exit≠0 → 以降継続
+
+
+
 
       # ── SARIF を GitHub Code Scanning へアップロード
       - name: Upload Semgrep SARIF
