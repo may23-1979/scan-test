@@ -1,4 +1,4 @@
-name: "Code Scanning (CodeQL + Psalm)"
+name: "Code Scanning (CodeQL + Semgrep)"
 
 on:
   push:
@@ -9,19 +9,20 @@ on:
     - cron: '0 0 * * 0'   # 毎週日曜
 
 permissions:
-  contents: read
   actions:  read
-  security-events: write
+  contents: read
+  security-events: write   # SARIF アップロード権限
 
 ###############################################################################
-# 1) CodeQL ─ actions / javascript-typescript
+# 1) CodeQL ─ GitHub Actions (YAML) のみ解析
 ###############################################################################
 jobs:
   codeql:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: [ "actions", "javascript-typescript" ]
+        language: [ "actions" ]        # JS/TS を CodeQL でも解析したい場合は
+                                       # ["actions","javascript-typescript"] に
     steps:
       - uses: actions/checkout@v3
 
@@ -33,33 +34,32 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL Analysis
+      - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Psalm ─ PHP (SARIF をアップロード)
+# 2) Semgrep ─ PHP / JS / TS を解析（Composer 不要）
 ###############################################################################
-  psalm:
+  semgrep:
     runs-on: ubuntu-latest
+    # PHP・JS・TS のいずれかが存在する場合のみ実行
+    if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up PHP + Composer
-        uses: shivammathur/setup-php@v2
+      # ---- Semgrep スキャン ----
+      - name: Run Semgrep (OWASP Top 10 rules)
+        id: semgrep
+        uses: returntocorp/semgrep-action@v1
         with:
-          php-version: "8.2"
-          tools: composer
+          config: p/owasp-top-ten      # 代表的ルールセット
+          generateSarif: "yes"         # semgrep.sarif を生成
+          # ↑ 独自ルールを使う場合は config: "./.semgrep" などに変更
 
-      - name: Install Composer dependencies
-        if: ${{ hashFiles('**/composer.json') != '' }}
-        run: composer install --no-scripts --no-progress --prefer-dist
-
-      - name: Psalm Security Scan
-        uses: docker://ghcr.io/psalm/psalm-security-scan      # Docker Action
-
-      - name: Upload SARIF to Code Scanning
+      # ---- SARIF アップロード ----
+      - name: Upload SARIF (Semgrep)
+        if: success() || failure()      # 脆弱性検出で non-zero でも必ず実行
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif
-
+          sarif_file: semgrep.sarif
 
