@@ -58,9 +58,7 @@ jobs:
           --config=p/phpcs-security-audit \   # ★ PHP セキュリティ専用
           --config=p/security-audit \         # ★ 汎用セキュリティ
           --sarif --output=semgrep.sarif \
-        || true                             # 脆弱性で exit≠0 → 以降継続
-
-
+          || true                             # 脆弱性で exit≠0 → 以降継続
 
 
       # ── SARIF を GitHub Code Scanning へアップロード
