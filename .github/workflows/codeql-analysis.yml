@@ -64,9 +64,6 @@ jobs:
 
 
 
-
-
-
       # ── SARIF を GitHub Code Scanning へアップロード
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
