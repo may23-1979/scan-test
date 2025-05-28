@@ -52,13 +52,13 @@ jobs:
       # --- Semgrep 実行（PHP / JS / TS）----------------------------
       - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
-    run: |
-    semgrep ci \
-      --config=p/owasp-top-ten \          # 既存 JS/TS 用
-      --config=p/phpcs-security-audit \   # ★ PHP セキュリティ専用
-      --config=p/security-audit \         # ★ 汎用セキュリティ
-      --sarif --output=semgrep.sarif \
-      || true                             # 脆弱性で exit≠0 → 以降継続
+        run: |
+        semgrep ci \
+          --config=p/owasp-top-ten \          # 既存 JS/TS 用
+          --config=p/phpcs-security-audit \   # ★ PHP セキュリティ専用
+          --config=p/security-audit \         # ★ 汎用セキュリティ
+          --sarif --output=semgrep.sarif \
+        || true                             # 脆弱性で exit≠0 → 以降継続
 
 
 
