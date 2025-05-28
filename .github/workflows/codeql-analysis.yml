@@ -1,26 +1,27 @@
-
 name: "Code Scanning (CodeQL + Psalm)"
 
 on:
-  push:        { branches: [ "main" ] }
-  pull_request:{ branches: [ "main" ] }
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   schedule:
     - cron: '0 0 * * 0'   # 毎週日曜
 
 permissions:
   contents: read
   actions:  read
-  security-events: write   # SARIF アップロードに必須
+  security-events: write
 
 ###############################################################################
-# 1) CodeQL  ─ actions / javascript-typescript
+# 1) CodeQL ─ actions / javascript-typescript
 ###############################################################################
 jobs:
   codeql:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: [ "actions", "javascript-typescript" ]   # 必要に応じて追加
+        language: [ "actions", "javascript-typescript" ]
     steps:
       - uses: actions/checkout@v3
 
@@ -36,14 +37,13 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Psalm  ─ PHP (SARIF を Code Scanning に統合)
+# 2) Psalm ─ PHP (SARIF をアップロード)
 ###############################################################################
   psalm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      # ── Composer を使うプロジェクトだけ依存を解決 ────────────────
       - name: Set up PHP + Composer
         uses: shivammathur/setup-php@v2
         with:
@@ -54,13 +54,12 @@ jobs:
         if: ${{ hashFiles('**/composer.json') != '' }}
         run: composer install --no-scripts --no-progress --prefer-dist
 
-      # ── Psalm Security Scan (公式 Action) ───────────────────────
       - name: Psalm Security Scan
-        uses: docker://ghcr.io/psalm/psalm-security-scan          # ← 1 行で OK
+        uses: docker://ghcr.io/psalm/psalm-security-scan      # Docker Action
 
-      # ── SARIF を Code Scanning にアップロード ──────────────────
       - name: Upload SARIF to Code Scanning
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif                               # ← 公式と同じ
+          sarif_file: results.sarif
+
 
