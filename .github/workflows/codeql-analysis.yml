@@ -6,22 +6,22 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '0 0 * * 0'      # 毎週日曜
+    - cron: "0 0 * * 0"    # 毎週日曜
 
 permissions:
-  actions:  read          # private repo の場合に必要
+  actions: read
   contents: read
-  security-events: write # SARIF アップロード権限
+  security-events: write   # SARIF アップロードに必須
 
 ###############################################################################
-# 1) CodeQL ─ GitHub Actions (YAML) を解析
+# 1) CodeQL ─ GitHub Actions(YAML) を解析
 ###############################################################################
 jobs:
   codeql:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: [ "actions" ]        # 必要なら "javascript-typescript" を追加
+        language: [ "actions" ]         # JS/TS も CodeQL で解析したいなら追加
     steps:
       - uses: actions/checkout@v3
 
@@ -33,39 +33,32 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL Analysis
+      - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析（Composer 不要）
+# 2) Semgrep ─ PHP / JS / TS を解析
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep          # ← “returntocorp/semgrep” でも可
+      image: semgrep/semgrep            # CLI が入った公式イメージ
     steps:
       - uses: actions/checkout@v3
 
+      - name: Run Semgrep (PHP + JS/TS)
+        id: semgrep
+        run: |
+          semgrep ci \
+            --config=p/owasp-top-ten \
+            --config=p/phpcs-security-audit \
+            --config=p/security-audit \
+            --sarif \
+            --output=semgrep.sarif \
+          || true                       # 検出で exit≠0 でも続行
 
-      # --- Semgrep 実行（PHP / JS / TS）----------------------------
-
-      sarif_file: semgrep.sarif
-      # --- Semgrep 実行（PHP / JS / TS）----------------------------
-        - name: Run Semgrep (PHP + JS/TS)
-          id: semgrep
-          run: |
-            semgrep ci \
-              --config=p/owasp-top-ten \
-              --config=p/phpcs-security-audit \
-              --config=p/security-audit \
-              --sarif \
-              --output=semgrep.sarif \
-            || true
-
-
-
-      # ── SARIF を GitHub Code Scanning へアップロード
       - name: Upload Semgrep SARIF
+        if: always()                    # 上がスキップでも常に実行
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
