@@ -57,15 +57,13 @@ jobs:
       security-events: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 対象ファイルが 1 つ以上ある場合のみ実行
       - name: Run Semgrep (PHP + JS/TS)
         if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
         id: semgrep
         uses: semgrep/semgrep-action@v1
-        continue-on-error: true      # 脆弱性検出で exit=1 でも後続を継続
+        continue-on-error: true
         with:
           config: |
             p/owasp-top-ten
@@ -76,4 +74,5 @@ jobs:
         if: ${{ steps.semgrep.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif   # semgrep-action@v1 のデフォルト出力名
+          sarif_file: ${{ steps.semgrep.outputs.sarif }}   # ← ここがポイント
+
