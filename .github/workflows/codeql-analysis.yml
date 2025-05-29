@@ -6,12 +6,12 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: "0 0 * * 0"         # 毎週日曜
+    - cron: "0 0 * * 0"  # 毎週日曜
 
 permissions:
   contents: read
   actions:  read
-  security-events: write        # SARIF アップロードに必須
+  security-events: write      # SARIF アップロードに必須
 
 ###############################################################################
 # 1) CodeQL ─ GitHub Actions (YAML) と PHP を解析する場合の例
@@ -20,15 +20,15 @@ jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    permissions: # ジョブ固有の権限 (トップレベルの権限を上書き/補完)
+      contents: read
+      actions: read
+      security-events: write
     strategy:
       fail-fast: false # 1つの言語で失敗しても他の言語のスキャンを継続
       matrix:
         language: [ 'actions', 'php' ] # 'php' を追加
         # JavaScript/TypeScriptもCodeQLでスキャンしたい場合は 'javascript' を追加
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -54,7 +54,12 @@ jobs:
       # - name: Build PHP project (if needed)
       #   if: matrix.language == 'php'
       #   run: |
-      #     composer install --no-dev --no-progress --no-scripts --optimize-autoloader # 例
+      #     # composer.lock ファイルが存在する場合のみ実行する例
+      #     if [ -f composer.lock ]; then
+      #       composer install --no-dev --no-progress --no-scripts --optimize-autoloader
+      #     else
+      #       echo "composer.lock not found, skipping composer install"
+      #     fi
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -68,19 +73,21 @@ jobs:
   semgrep:
     name: Semgrep SAST Scan
     runs-on: ubuntu-latest
-    permissions:
+    permissions: # ジョブ固有の権限
       contents: read # for checkout
       security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
       actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 最新バージョンに更新 (執筆時点)
+        uses: actions/checkout@v4
 
-      # 対象ファイル（php/js/ts）が 1 つでもある時だけ実行
+      # 対象ファイル（php/js/ts）が 1 つでもある時だけ実行する条件は、
+      # Semgrepアクション自体が対象ファイルがない場合にスキップするため、必須ではない場合もあります。
+      # より明示的に制御したい場合は残しても構いません。
+      # if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
       - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
-        # if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }} # Semgrep自体が対象ファイルがない場合はスキップするので、このifは必須ではない場合もあります
-        uses: semgrep/semgrep-action@v2 # 最新バージョンに変更 (執筆時点)
+        uses: semgrep/semgrep-action@v2
         continue-on-error: true        # エラーが発生しても処理を継続し、SARIFアップロードを試みる場合
         with:
           # publishToken: ${{ secrets.SEMGREP_APP_TOKEN }} # Semgrep Appに結果を送信する場合に設定
@@ -99,4 +106,3 @@ jobs:
         with:
           sarif_file: semgrep.sarif # semgrep/semgrep-action@v2 のデフォルト出力ファイル名
           # category: semgrep # オプション: CodeQLの解析結果と区別するためのカテゴリ名
-
