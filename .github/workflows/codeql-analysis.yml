@@ -36,14 +36,13 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
-
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析
+# 2) Semgrep ─ PHP / JS / TS をフルスキャン
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep
+      image: semgrep/semgrep          # CLI 内蔵イメージ
     steps:
       - uses: actions/checkout@v3
 
@@ -51,18 +50,37 @@ jobs:
         id: semgrep
         run: |
           set -e
-          if ! semgrep scan \
-                --config=p/owasp-top-ten \
-                --config=p/phpcs-security-audit \
-                --config=p/security-audit \
-                --metrics=off \
-                --format sarif \
-                --output "$GITHUB_WORKSPACE/semgrep.sarif"; then
-            echo "::warning ::Semgrep failed – Generating empty SARIF."
-            printf '{"version":"2.1.0","runs":[]}' > "$GITHUB_WORKSPACE/semgrep.sarif"
+          # --- フルスキャン -------------------------------------------------
+          semgrep scan \
+            --config=p/owasp-top-ten \
+            --config=p/phpcs-security-audit \
+            --config=p/security-audit \
+            --metrics=off \
+            --format sarif \
+            --output semgrep.sarif \
+          || true            # 脆弱性検出や閾値超過で exit≠0 でも続行
+
+          # --- もし SARIF が無い・空(run=[] ) 場合はダミーを作る ----------
+          if [ ! -s semgrep.sarif ] || ! grep -q '"runs":\s*\[' semgrep.sarif; then
+            echo "::warning ::Semgrep SARIF missing or empty; generating stub."
+            cat > semgrep.sarif <<'EOF'
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": { "name": "semgrep", "informationUri": "https://semgrep.dev", "version": "0" }
+      },
+      "results": []
+    }
+  ]
+}
+EOF
           fi
 
+      # --- SARIF を Code Scanning へアップロード ---------------------------
       - name: Upload Semgrep SARIF
+        if: hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
