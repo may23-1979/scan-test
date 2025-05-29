@@ -6,22 +6,22 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: "0 0 * * 0"    # 毎週日曜
+    - cron: "0 0 * * 0"         # 毎週日曜
 
 permissions:
-  actions: read
   contents: read
-  security-events: write   # SARIF アップロードに必須
+  actions:  read
+  security-events: write        # SARIF アップロードに必須
 
 ###############################################################################
-# 1) CodeQL ─ GitHub Actions(YAML) を解析
+# 1) CodeQL ─ GitHub Actions (YAML) を解析
 ###############################################################################
 jobs:
   codeql:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: [ "actions" ]         # JS/TS も CodeQL で解析したいなら追加
+        language: [ "actions" ]         # JS/TS も CodeQL で見たいなら追加
     steps:
       - uses: actions/checkout@v3
 
@@ -33,44 +33,36 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS をフルスキャン
+# 2) Semgrep ─ PHP / JS / TS を解析（Composer 不要・コンテナも不要）
 ###############################################################################
+  semgrep:
+    runs-on: ubuntu-latest
+
+    # PHP・JS・TS ファイルが 1 つでもあれば実行
+    if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx') != '' }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      # --- Semgrep 公式アクション（SARIF を自動出力） -------------------
       - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
-        run: |
-          set -e
+        uses: returntocorp/semgrep-action@v1
+        with:
+          # ルールセットを複数行で指定可能
+          config: |
+            p/owasp-top-ten
+            p/phpcs-security-audit
+            p/security-audit
+          generateSarif: "yes"          # ← SARIF を出力し、パスを outputs で返す
 
-          # === フルスキャン & SARIF 生成 ===================================
-          semgrep scan \
-            --config=p/owasp-top-ten \
-            --config=p/phpcs-security-audit \
-            --config=p/security-audit \
-            --metrics=off \
-            --sarif \
-            --output semgrep.sarif \
-          || true
-
-          # === SARIF が無い／空ならダミーを作成 ============================
-          if [ ! -s semgrep.sarif ] || ! grep -q '"runs":' semgrep.sarif; then
-            echo "::warning ::Semgrep SARIF missing or empty; generating stub."
-            cat > semgrep.sarif <<'EOF'
-          {
-            "version": "2.1.0",
-            "runs": [
-              {
-                "tool": {
-                  "driver": {
-                    "name": "semgrep",
-                    "informationUri": "https://semgrep.dev",
-                    "version": "0"
-                  }
-                },
-                "results": []
-              }
-            ]
-          }
-          EOF
-          fi
+      # --- SARIF を Code Scanning へアップロード -------------------------
+      - name: Upload Semgrep SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.semgrep.outputs.sarif }}
 

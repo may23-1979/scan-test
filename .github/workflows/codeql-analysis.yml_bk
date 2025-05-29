@@ -1,0 +1,76 @@
+name: "Code Scanning (CodeQL + Semgrep)"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 0 * * 0"    # 毎週日曜
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write   # SARIF アップロードに必須
+
+###############################################################################
+# 1) CodeQL ─ GitHub Actions(YAML) を解析
+###############################################################################
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language: [ "actions" ]         # JS/TS も CodeQL で解析したいなら追加
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+
+###############################################################################
+# 2) Semgrep ─ PHP / JS / TS をフルスキャン
+###############################################################################
+      - name: Run Semgrep (PHP + JS/TS)
+        id: semgrep
+        run: |
+          set -e
+
+          # === フルスキャン & SARIF 生成 ===================================
+          semgrep scan \
+            --config=p/owasp-top-ten \
+            --config=p/phpcs-security-audit \
+            --config=p/security-audit \
+            --metrics=off \
+            --sarif \
+            --output semgrep.sarif \
+          || true
+
+          # === SARIF が無い／空ならダミーを作成 ============================
+          if [ ! -s semgrep.sarif ] || ! grep -q '"runs":' semgrep.sarif; then
+            echo "::warning ::Semgrep SARIF missing or empty; generating stub."
+            cat > semgrep.sarif <<'EOF'
+          {
+            "version": "2.1.0",
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "semgrep",
+                    "informationUri": "https://semgrep.dev",
+                    "version": "0"
+                  }
+                },
+                "results": []
+              }
+            ]
+          }
+          EOF
+          fi
+
