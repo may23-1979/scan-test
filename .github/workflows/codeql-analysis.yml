@@ -46,11 +46,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+
       - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
         run: |
           set -e
-          # --- フルスキャン -------------------------------------------------
           semgrep scan \
             --config=p/owasp-top-ten \
             --config=p/phpcs-security-audit \
@@ -58,23 +58,27 @@ jobs:
             --metrics=off \
             --format sarif \
             --output semgrep.sarif \
-          || true            # 脆弱性検出や閾値超過で exit≠0 でも続行
+          || true
 
-          # --- もし SARIF が無い・空(run=[] ) 場合はダミーを作る ----------
+          # --- SARIF が無い／空ならダミーを生成 ----------------------
           if [ ! -s semgrep.sarif ] || ! grep -q '"runs":\s*\[' semgrep.sarif; then
             echo "::warning ::Semgrep SARIF missing or empty; generating stub."
             cat > semgrep.sarif <<'EOF'
-{
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": { "name": "semgrep", "informationUri": "https://semgrep.dev", "version": "0" }
-      },
-      "results": []
-    }
-  ]
-}
+            {
+              "version": "2.1.0",
+              "runs": [
+                {
+                  "tool": {
+                    "driver": {
+                      "name": "semgrep",
+                      "informationUri": "https://semgrep.dev",
+                      "version": "0"
+                    }
+                  },
+                  "results": []
+                }
+              ]
+            }
 EOF
           fi
 
@@ -84,8 +88,5 @@ EOF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
-
-
-
 
 
