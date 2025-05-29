@@ -36,30 +36,33 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
+
+
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析
+# 2) Semgrep ─ PHP / JS / TS をフルスキャン
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep            # CLI が入った公式イメージ
+      image: semgrep/semgrep            # CLI 内蔵公式イメージ
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run Semgrep (PHP + JS/TS)
+      - name: Run Semgrep Full Scan (PHP + JS/TS)
         id: semgrep
         run: |
-          semgrep ci \
+          semgrep scan \
             --config=p/owasp-top-ten \
             --config=p/phpcs-security-audit \
             --config=p/security-audit \
-            --sarif \
-            --output=semgrep.sarif \
+            --metrics=off \
+            --format sarif \
+            --output semgrep.sarif \
           || true                       # 検出で exit≠0 でも続行
 
       - name: Upload Semgrep SARIF
-        if: always()                    # 上がスキップでも常に実行
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
+
 
