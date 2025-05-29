@@ -1,0 +1,66 @@
+name: "Code Scanning (CodeQL + Semgrep)"
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 0 * * 0"         # 毎週日曜
+
+permissions:
+  contents: read
+  actions:  read
+  security-events: write        # SARIF アップロードに必須
+
+###############################################################################
+# 1) CodeQL ─ GitHub Actions (YAML) を解析
+###############################################################################
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language: [ "actions" ]         # JS/TS も CodeQL で見たいなら追加
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+
+###############################################################################
+# 2) Semgrep ─ PHP / JS / TS を解析
+###############################################################################
+  semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      # 対象ファイル（php/js/ts）が 1 つでもある時だけ実行
+      - name: Run Semgrep (PHP + JS/TS)
+        id: semgrep
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
+        uses: returntocorp/semgrep-action@v1
+        continue-on-error: true           # ← 重要
+        with:
+          config: |
+            p/owasp-top-ten
+            p/phpcs-security-audit
+            p/security-audit
+
+      # Semgrep が走った場合に SARIF をアップロード
+      - name: Upload Semgrep SARIF
+        if: ${{ steps.semgrep.outcome != 'skipped' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif        # ← v1 のデフォルト出力名
+
