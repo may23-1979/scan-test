@@ -20,17 +20,11 @@ jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
     strategy:
-      fail-fast: false
       matrix:
-        language: [ 'actions' ]        # 必要に応じて 'javascript-typescript' を追加
+        language: [ 'actions' ]          # JS/TS も CodeQL で見たいなら追加
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -40,20 +34,18 @@ jobs:
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
 
-      - name: Perform CodeQL Analysis
+      - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
-        with:
-          category: "/language:${{ matrix.language }}"
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析し SARIF を Code Scanning に統合
+# 2) Semgrep ─ PHP / JS / TS を解析して SARIF をアップロード
 ###############################################################################
   semgrep:
     name: Semgrep SAST Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: read
+      actions:  read
       security-events: write
 
     steps:
@@ -63,7 +55,7 @@ jobs:
         if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
         id: semgrep
         uses: semgrep/semgrep-action@v1
-        continue-on-error: true
+        continue-on-error: true          # ブロッキングルールで exit≠0 でも後続へ
         with:
           config: |
             p/owasp-top-ten
@@ -74,5 +66,4 @@ jobs:
         if: ${{ steps.semgrep.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.semgrep.outputs.sarif }}   # ← ここがポイント
-
+          sarif_file: results.sarif       # ← これだけでアップロード成功
