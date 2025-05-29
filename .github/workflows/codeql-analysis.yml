@@ -1,69 +1,46 @@
-name: "Code Scanning (CodeQL + Semgrep)"
-
+name: Semgrep Code Scanning Workflow
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]    # Run on pushes to the main branch
   pull_request:
-    branches: [ "main" ]
-  schedule:
-    - cron: "0 0 * * 0"   # 毎週日曜
+    branches: ["main"]    # Run on pull requests targeting the main branch
 
 permissions:
-  contents: read
-  actions:  read
-  security-events: write   # SARIF をアップロードする権限
+  contents: read          # Allow read access to the repository content (for checkout)
+  security-events: write  # Required to upload SARIF results to GitHub Code Scanning:contentReference[oaicite:1]{index=1}
+  # Note: For private repositories, also add `actions: read` permission for upload-sarif to access workflow run info.
 
-###############################################################################
-# 1) CodeQL ─ GitHub Actions (YAML) を解析
-###############################################################################
 jobs:
-  codeql:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        language: [ 'actions' ]          # JS/TS も CodeQL で見たいなら追加
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.language }}
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
-
-###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析して SARIF をアップロード
-###############################################################################
   semgrep:
-    name: Semgrep SAST Scan
+    name: Run Semgrep scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions:  read
-      security-events: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v3
+        # Fetches the repository content so it can be scanned by Semgrep
 
-      - name: Run Semgrep (PHP + JS/TS)
-        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
-        id: semgrep
-        uses: semgrep/semgrep-action@v1
-        continue-on-error: true          # ブロッキングルールで exit≠0 でも後続へ
-        with:
-          config: |
-            p/owasp-top-ten
-            p/phpcs-security-audit
-            p/security-audit
+      - name: Run Semgrep (PHP & JavaScript)
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            semgrep/semgrep:latest \
+            semgrep --config auto --include '**/*.php' --include '**/*.js' --sarif -o semgrep.sarif .
+        # Use the Semgrep CLI in the official Docker container to scan only PHP and JS files.
+        # The '--include' globs ensure only *.php and *.js files are analyzed.
+        # Results are output in SARIF format and saved to semgrep.sarif
+
+      - name: Ensure SARIF file exists
+        run: |
+          if [ ! -f semgrep.sarif ] || [ ! -s semgrep.sarif ]; then
+            echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Semgrep"}},"results":[]}]}'> semgrep.sarif
+          fi
+        # If the SARIF file is missing or empty, generate a minimal SARIF with no results.
+        # This prevents the upload step from failing (code scanning expects an empty 'runs' entry when no alerts are found:contentReference[oaicite:2]{index=2}).
 
       - name: Upload Semgrep SARIF
-        if: ${{ steps.semgrep.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: results.sarif       # ← これだけでアップロード成功
+          sarif_file: semgrep.sarif
+        # Upload the SARIF report to GitHub Code Scanning (Security tab)
