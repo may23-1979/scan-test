@@ -52,24 +52,35 @@ jobs:
       #####################################################
       # カスタム PHP SQLi ルールをリポジトリ内に生成
       #####################################################
-      - name: Write custom PHP taint rule
+      - name: Write custom PHP taint rule (SQLi + XSS)
         run: |
           mkdir -p .semgrep
+          # --- SQLi ルール ---
           cat > .semgrep/php-sqli.yml <<'EOF'
+          # ...前回の php-sqli.yml ...
+          EOF
+          # --- XSS ルール ---
+          cat > .semgrep/php-xss.yml <<'EOF'
           rules:
-            - id: php-insecure-sql-query
+            - id: php-xss-output
               languages: [php]
-              message: "未検証のユーザ入力が SQL クエリに直接使用されています（SQLインジェクションの可能性）。"
+              message: "ユーザ入力を HTML に未エスケープで出力しています (XSS)。"
               severity: ERROR
               mode: taint
               pattern-sources:
-                - pattern: $_GET[..]
-              pattern-sinks:
                 - patterns:
-                    - pattern: $DB->query($QUERY)
-                    - pattern: mysqli_query(..., $QUERY)
+                    - pattern: $_GET[..]
+                    - pattern: $_POST[..]
+                    - pattern: $_REQUEST[..]
+                    - pattern: $_COOKIE[..]
+              pattern-sinks:
+                - pattern: echo $X
+                - pattern: print $X
+                - pattern: <?= $X ?>
               pattern-sanitizers:
-                - pattern: $DB->prepare(...)
+                - pattern-either:
+                    - pattern: htmlspecialchars(...)
+                    - pattern: htmlentities(...)
           EOF
 
       #####################################################
