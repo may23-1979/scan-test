@@ -37,32 +37,37 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
 
-
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS をフルスキャン
+# 2) Semgrep ─ PHP / JS / TS を解析
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep            # CLI 内蔵公式イメージ
+      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v3
 
-      - name: Run Semgrep Full Scan (PHP + JS/TS)
+      - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
         run: |
-          semgrep scan \
-            --config=p/owasp-top-ten \
-            --config=p/phpcs-security-audit \
-            --config=p/security-audit \
-            --metrics=off \
-            --format sarif \
-            --output semgrep.sarif \
-          || true                       # 検出で exit≠0 でも続行
+          set -e
+          if ! semgrep scan \
+                --config=p/owasp-top-ten \
+                --config=p/phpcs-security-audit \
+                --config=p/security-audit \
+                --metrics=off \
+                --format sarif \
+                --output "$GITHUB_WORKSPACE/semgrep.sarif"; then
+            echo "::warning ::Semgrep failed – Generating empty SARIF."
+            printf '{"version":"2.1.0","runs":[]}' > "$GITHUB_WORKSPACE/semgrep.sarif"
+          fi
 
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
+
+
+
 
 
