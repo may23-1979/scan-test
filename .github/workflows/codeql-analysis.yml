@@ -97,13 +97,13 @@ jobs:
         run: |
           if [ ! -s semgrep.sarif ]; then
             echo "::warning ::SARIF が生成されなかったため空レポートを作成します"
-            cat > semgrep.sarif <<'EMPTY'
-            {
-              "version":"2.1.0",
-              "runs":[]
-            }
-            EMPTY
+            printf '%s\n' \
+              '{' \
+              '  "version": "2.1.0",' \
+              '  "runs": []' \
+              '}' > semgrep.sarif
           fi
+
 
       #####################################################
       # SARIF を Code Scanning へアップロード
