@@ -37,31 +37,28 @@ jobs:
         uses: github/codeql-action/analyze@v3
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析（Composer 不要・コンテナも不要）
+# 2) Semgrep ─ PHP / JS / TS を解析
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
-
-    # PHP・JS・TS ファイルが 1 つでもあれば実行
-    if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx') != '' }}
-
     steps:
       - uses: actions/checkout@v3
 
-      # --- Semgrep 公式アクション（SARIF を自動出力） -------------------
+      # 対象ファイルがあるときだけ Semgrep を実行
       - name: Run Semgrep (PHP + JS/TS)
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
         id: semgrep
         uses: returntocorp/semgrep-action@v1
         with:
-          # ルールセットを複数行で指定可能
           config: |
             p/owasp-top-ten
             p/phpcs-security-audit
             p/security-audit
-          generateSarif: "yes"          # ← SARIF を出力し、パスを outputs で返す
+          generateSarif: "yes"
 
-      # --- SARIF を Code Scanning へアップロード -------------------------
+      # Semgrep が実行された場合にだけ SARIF をアップロード
       - name: Upload Semgrep SARIF
+        if: ${{ steps.semgrep.outcome == 'success' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: ${{ steps.semgrep.outputs.sarif }}
