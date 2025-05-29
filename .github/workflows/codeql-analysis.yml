@@ -1,52 +1,114 @@
-name: Semgrep Code Scanning Workflow
+name: "Code Scanning (CodeQL + Semgrep)"
+
 on:
   push:
-    branches: ["main"]    # Run on pushes to the main branch
+    branches: ["main"]
   pull_request:
-    branches: ["main"]    # Run on pull requests targeting the main branch
+    branches: ["main"]
+  schedule:
+    - cron: "0 0 * * 0"   # 毎週日曜
 
+############################################
+# グローバル権限：SARIF をアップロードするため
+############################################
 permissions:
-  contents: read          # Allow read access to the repository content (for checkout)
-  security-events: write  # Required to upload SARIF results to GitHub Code Scanning:contentReference[oaicite:1]{index=1}
-  # Note: For private repositories, also add `actions: read` permission for upload-sarif to access workflow run info.
+  contents: read
+  security-events: write
+  actions: read           # private repo なら必須
 
+##########################
+# 1) CodeQL ─ GitHub Actions
+##########################
 jobs:
-  semgrep:
-    name: Run Semgrep scan
+  codeql:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language: ['actions']           # JS/TS も CodeQL で解析したい場合は追加
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+###########################################
+# 2) Semgrep ─ PHP / JS スキャン + SARIF
+###########################################
+  semgrep:
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep:latest   # CLI 入り公式イメージ
 
     steps:
-      - name: Check out code
-        uses: actions/checkout@v3
-        # Fetches the repository content so it can be scanned by Semgrep
+      - uses: actions/checkout@v4
 
-      - name: Run Semgrep (PHP + JS/TS)
-        id: semgrep
-        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx') != '' }}
+      #####################################################
+      # カスタム PHP SQLi ルールをリポジトリ内に生成
+      #####################################################
+      - name: Write custom PHP taint rule
         run: |
-          docker run --rm \
-            -v "${GITHUB_WORKSPACE}:/src" \
-            -w /src \
-            semgrep/semgrep:latest \
-            semgrep scan \
+          mkdir -p .semgrep
+          cat > .semgrep/php-sqli.yml <<'EOF'
+          rules:
+            - id: php-insecure-sql-query
+              languages: [php]
+              message: "未検証のユーザ入力が SQL クエリに直接使用されています（SQLインジェクションの可能性）。"
+              severity: ERROR
+              mode: taint
+              pattern-sources:
+                - pattern: $_GET[..]
+              pattern-sinks:
+                - patterns:
+                    - pattern: $DB->query($QUERY)
+                    - pattern: mysqli_query(..., $QUERY)
+              pattern-sanitizers:
+                - pattern: $DB->prepare(...)
+          EOF
+
+      #####################################################
+      # Semgrep 実行（PHP & JS）―― SARIF を必ず生成
+      #####################################################
+      - name: Run Semgrep scan (PHP + JS)
+        id: semgrep
+        continue-on-error: true          # 脆弱性検出で exit=1 でも後続へ
+        run: |
+          semgrep scan \
+            --config=p/owasp-top-ten \
             --config=p/phpcs-security-audit \
             --config=p/security-audit \
+            --config=.semgrep/php-sqli.yml \
             --include '**/*.php' \
             --include '**/*.js' \
             --sarif \
             --output semgrep.sarif \
           || true
 
-      - name: Ensure SARIF file exists
+      #####################################################
+      # SARIF が無い・空ならダミーファイルを生成
+      #####################################################
+      - name: Ensure SARIF exists
         run: |
-          if [ ! -f semgrep.sarif ] || [ ! -s semgrep.sarif ]; then
-            echo '{"version":"2.1.0","$schema":"https://json.schemastore.org/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Semgrep"}},"results":[]}]}'> semgrep.sarif
+          if [ ! -s semgrep.sarif ]; then
+            echo "::warning ::SARIF が生成されなかったため空レポートを作成します"
+            cat > semgrep.sarif <<'EMPTY'
+            {
+              "version":"2.1.0",
+              "runs":[]
+            }
+EMPTY
           fi
-        # If the SARIF file is missing or empty, generate a minimal SARIF with no results.
-        # This prevents the upload step from failing (code scanning expects an empty 'runs' entry when no alerts are found:contentReference[oaicite:2]{index=2}).
 
+      #####################################################
+      # SARIF を Code Scanning へアップロード
+      #####################################################
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
-        # Upload the SARIF report to GitHub Code Scanning (Security tab)
