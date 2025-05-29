@@ -36,32 +36,33 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
+
 ###############################################################################
 # 2) Semgrep ─ PHP / JS / TS をフルスキャン
 ###############################################################################
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: semgrep/semgrep          # CLI 内蔵イメージ
+      image: semgrep/semgrep:latest          # CLI 内蔵公式イメージ
     steps:
       - uses: actions/checkout@v3
-
 
       - name: Run Semgrep (PHP + JS/TS)
         id: semgrep
         run: |
           set -e
+
+          # === フルスキャン & SARIF 生成 ===================================
           semgrep scan \
             --config=p/owasp-top-ten \
             --config=p/phpcs-security-audit \
             --config=p/security-audit \
             --metrics=off \
-            --format sarif \
-            --output semgrep.sarif \
-          || true
+            --sarif=semgrep.sarif \
+          || true    # 脆弱性検出で exit≠0 でも後続を継続
 
-          # --- SARIF が無い／空ならダミーを生成 ----------------------
-          if [ ! -s semgrep.sarif ] || ! grep -q '"runs":\s*\[' semgrep.sarif; then
+          # === SARIF が無い／空ならダミーを作成 ============================
+          if [ ! -s semgrep.sarif ] || ! grep -q '"runs":' semgrep.sarif; then
             echo "::warning ::Semgrep SARIF missing or empty; generating stub."
             cat > semgrep.sarif <<'EOF'
             {
@@ -82,11 +83,12 @@ jobs:
             EOF
           fi
 
-      # --- SARIF を Code Scanning へアップロード ---------------------------
       - name: Upload Semgrep SARIF
         if: hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
+
+
 
 
