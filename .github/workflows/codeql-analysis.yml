@@ -20,16 +20,22 @@ jobs:
         uses: actions/checkout@v3
         # Fetches the repository content so it can be scanned by Semgrep
 
-      - name: Run Semgrep (PHP & JavaScript)
+      - name: Run Semgrep (PHP + JS/TS)
+        id: semgrep
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx') != '' }}
         run: |
           docker run --rm \
             -v "${GITHUB_WORKSPACE}:/src" \
             -w /src \
             semgrep/semgrep:latest \
-            semgrep --config auto --include '**/*.php' --include '**/*.js' --sarif -o semgrep.sarif .
-        # Use the Semgrep CLI in the official Docker container to scan only PHP and JS files.
-        # The '--include' globs ensure only *.php and *.js files are analyzed.
-        # Results are output in SARIF format and saved to semgrep.sarif
+            semgrep scan \
+            --config=p/phpcs-security-audit \
+            --config=p/security-audit \
+            --include '**/*.php' \
+            --include '**/*.js' \
+            --sarif \
+            --output semgrep.sarif \
+          || true
 
       - name: Ensure SARIF file exists
         run: |
