@@ -6,28 +6,28 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: "0 0 * * 0"  # 毎週日曜
+    - cron: "0 0 * * 0"   # 毎週日曜
 
 permissions:
   contents: read
   actions:  read
-  security-events: write      # SARIF アップロードに必須
+  security-events: write   # SARIF をアップロードする権限
 
 ###############################################################################
-# 1) CodeQL ─ GitHub Actions (YAML) と PHP を解析する場合の例
+# 1) CodeQL ─ GitHub Actions (YAML) を解析
 ###############################################################################
 jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
-    permissions: # ジョブ固有の権限 (トップレベルの権限を上書き/補完)
+    permissions:
       contents: read
       actions: read
       security-events: write
     strategy:
-      fail-fast: false # 1つの言語で失敗しても他の言語のスキャンを継続
+      fail-fast: false
       matrix:
-        language: [ 'actions', 'javascript' ] # 
+        language: [ 'actions' ]        # 必要に応じて 'javascript-typescript' を追加
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,72 +36,44 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          # PHPプロジェクトで特定のビルド手順や依存関係の解決が必要な場合は、
-          # ここで設定するか、専用のビルドステップを追加します。
-          # queries: +security-and-quality # より多くのクエリセットを実行する場合
 
-      # PHPのようなインタプリタ言語では、autobuildステップが不要な場合や、
-      # うまく機能しない場合があります。
-      # その場合はこのステップを削除するか、プロジェクト固有のビルドコマンドに置き換えることを検討してください。
       - name: Autobuild
-        if: matrix.language != 'php' # PHP以外の場合のみ実行する例 (PHPでは手動設定を推奨する場合)
-        # またはPHPの場合も実行してみて、問題があれば調整
         uses: github/codeql-action/autobuild@v3
-
-      # PHPでAutobuildが機能しない/不要な場合、CodeQLデータベース作成のためのカスタムビルドステップをここに記述できます。
-      # 例: PHPの依存関係をインストールするコマンドなど
-      # - name: Build PHP project (if needed)
-      #   if: matrix.language == 'php'
-      #   run: |
-      #     # composer.lock ファイルが存在する場合のみ実行する例
-      #     if [ -f composer.lock ]; then
-      #       composer install --no-dev --no-progress --no-scripts --optimize-autoloader
-      #     else
-      #       echo "composer.lock not found, skipping composer install"
-      #     fi
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:${{matrix.language}}"
-
+          category: "/language:${{ matrix.language }}"
 
 ###############################################################################
-# 2) Semgrep ─ PHP / JS / TS を解析
+# 2) Semgrep ─ PHP / JS / TS を解析し SARIF を Code Scanning に統合
 ###############################################################################
   semgrep:
     name: Semgrep SAST Scan
     runs-on: ubuntu-latest
-    permissions: # ジョブ固有の権限
-      contents: read # for checkout
-      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 対象ファイル（php/js/ts）が 1 つでもある時だけ実行する条件は、
-      # Semgrepアクション自体が対象ファイルがない場合にスキップするため、必須ではない場合もあります。
-      # より明示的に制御したい場合は残しても構いません。
-      # if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
+      # 対象ファイルが 1 つ以上ある場合のみ実行
       - name: Run Semgrep (PHP + JS/TS)
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
         id: semgrep
-        uses: semgrep/semgrep-action@v2
-        continue-on-error: true        # エラーが発生しても処理を継続し、SARIFアップロードを試みる場合
+        uses: semgrep/semgrep-action@v1
+        continue-on-error: true      # 脆弱性検出で exit=1 でも後続を継続
         with:
-          # publishToken: ${{ secrets.SEMGREP_APP_TOKEN }} # Semgrep Appに結果を送信する場合に設定
-          # generateSarif: true # デフォルトでtrueなので明示的な指定は不要な場合が多い
           config: |
             p/owasp-top-ten
             p/phpcs-security-audit
             p/security-audit
-            # 必要に応じて追加のルールセットをここに記述
-            # 例: r/php.lang.security
 
-      # Semgrep が走った場合に SARIF をアップロード
       - name: Upload Semgrep SARIF
-        if: ${{ steps.semgrep.outcome != 'skipped' }} # Semgrepがスキップされなかった場合のみ実行
+        if: ${{ steps.semgrep.outcome != 'skipped' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: semgrep.sarif # semgrep/semgrep-action@v2 のデフォルト出力ファイル名
-          # category: semgrep # オプション: CodeQLの解析結果と区別するためのカテゴリ名
+          sarif_file: results.sarif   # semgrep-action@v1 のデフォルト出力名
