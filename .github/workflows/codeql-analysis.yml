@@ -27,8 +27,7 @@ jobs:
     strategy:
       fail-fast: false # 1つの言語で失敗しても他の言語のスキャンを継続
       matrix:
-        language: [ 'actions', 'php' ] # 'php' を追加
-        # JavaScript/TypeScriptもCodeQLでスキャンしたい場合は 'javascript' を追加
+        language: [ 'actions', 'javascript' ] # 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
