@@ -39,6 +39,7 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
+
 ###########################################
 # 2) Semgrep ─ PHP / JS スキャン + SARIF
 ###########################################
@@ -114,7 +115,6 @@ jobs:
               '  "runs": []' \
               '}' > semgrep.sarif
           fi
-
 
       #####################################################
       # SARIF を Code Scanning へアップロード
