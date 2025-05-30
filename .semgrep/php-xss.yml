@@ -4,16 +4,29 @@ rules:
     message: "ユーザ入力を HTML に未エスケープで出力しています (XSS)。"
     severity: ERROR
     mode: taint
+
+    # ========== 1) 汚染源 ==========
     pattern-sources:
-      - pattern-either:
+      - patterns:
           - pattern: $_GET[..]
           - pattern: $_POST[..]
           - pattern: $_REQUEST[..]
           - pattern: $_COOKIE[..]
+
+    # ========== 2) プロパゲータ ==========
+    pattern-propagators:
+      - patterns:
+          - pattern: |
+              parse_str($Q, $ARR)    # $ARR が tainted になる
+          # 必要に応じて urldecode() なども追加可
+
+    # ========== 3) シンク ==========
     pattern-sinks:
       - pattern: echo $X
       - pattern: print $X
       - pattern: <?= $X ?>
+
+    # ========== 4) サニタイザ ==========
     pattern-sanitizers:
       - pattern-either:
           - pattern: htmlspecialchars(...)
