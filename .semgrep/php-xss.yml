@@ -1,3 +1,13 @@
+# .semgrep/php-xss.yml
+# ─────────────────────────────────────────────────────────────
+# 目的:  ユーザ入力を HTML に未エスケープで出力している XSS を検出
+# 対象:  PHP
+# 機能:  taint-mode で
+#         ① スーパーグローバル／QUERY_STRING を汚染源 (source)
+#         ② parse_str() と flattenQuery() をプロパゲータ (propagator)
+#         ③ echo / print をシンク (sink)
+#         ④ htmlspecialchars() / htmlentities() をサニタイザ (sanitizer)
+# ─────────────────────────────────────────────────────────────
 rules:
   - id: php-xss-output
     languages: [php]
@@ -5,26 +15,36 @@ rules:
     severity: ERROR
     mode: taint
 
-    # ① 汚染源：スーパーグローバル
+    # ① 汚染源 ────────────────────────────
     pattern-sources:
       - pattern-either:
           - pattern: $_GET[..]
           - pattern: $_POST[..]
           - pattern: $_REQUEST[..]
           - pattern: $_COOKIE[..]
+          - pattern: $_SERVER['QUERY_STRING']
 
-    # ② プロパゲータ：parse_str() で第2引数に渡った配列
+    # ② プロパゲータ ──────────────────────
     pattern-propagators:
+      # parse_str($tainted, $out) → $out が tainted
       - pattern: |
-          parse_str($QUERY, $ARR)
+          parse_str($IN, $OUT)
+        from: $IN
+        to:   $OUT
 
-    # ③ シンク：echo / print / <?= … ?>
+      # 任意の flattenQuery(汚染配列) → 戻り値も tainted
+      - pattern: |
+          $RES = flattenQuery($ARG)
+        from: $ARG
+        to:   $RES
+
+    # ③ シンク ────────────────────────────
     pattern-sinks:
-      - pattern: echo $X
-      - pattern: print $X
-      - pattern: "<?= $X ?>"
+      - pattern-either:
+          - pattern: echo $X;
+          - pattern: print $X;
 
-    # ④ サニタイザ：htmlspecialchars / htmlentities
+    # ④ サニタイザ ────────────────────────
     pattern-sanitizers:
       - pattern-either:
           - pattern: htmlspecialchars(...)
