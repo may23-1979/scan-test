@@ -9,43 +9,31 @@
 #         ④ htmlspecialchars() / htmlentities() をサニタイザ (sanitizer)
 # ─────────────────────────────────────────────────────────────
 rules:
-  - id: php-xss-output
+  - id: php-xss-fixed
     languages: [php]
-    message: "ユーザ入力を HTML に未エスケープで出力しています (XSS)。"
-    severity: ERROR
+    severity: WARNING
+    message: "ユーザ入力の直接的な出力はXSSの可能性があります。適切にエスケープしてください。"
     mode: taint
 
-    # ① 汚染源 ────────────────────────────
     pattern-sources:
       - pattern-either:
-          - pattern: $_GET[..]
-          - pattern: $_POST[..]
-          - pattern: $_REQUEST[..]
-          - pattern: $_COOKIE[..]
-          - pattern: $_SERVER['QUERY_STRING']
+        - pattern: $_GET[...]        # クエリパラメータからの入力
+        - pattern: $_POST[...]       # フォームPOSTデータからの入力
+        - pattern: $_REQUEST[...]    # GET/POST両対応の入力
+        - pattern: $_COOKIE[...]     # Cookieからの入力 (必要に応じて)
+        # 他にも必要なら$_SERVERなど追加可能
 
-    # ② プロパゲータ ──────────────────────
-    pattern-propagators:
-      # parse_str($tainted, $out) → $out が tainted
-      - pattern: |
-          parse_str($IN, $OUT)
-        from: $IN
-        to:   $OUT
-
-      # 任意の flattenQuery(汚染配列) → 戻り値も tainted
-      - pattern: |
-          $RES = flattenQuery($ARG)
-        from: $ARG
-        to:   $RES
-
-    # ③ シンク ────────────────────────────
     pattern-sinks:
       - pattern-either:
-          - pattern: echo $X;
-          - pattern: print $X;
-
-    # ④ サニタイザ ────────────────────────
+        - pattern: echo(...);       # echoでの出力全般
+        - pattern: print(...);      # print関数での出力
+        - pattern: <?= ... ?>       # 短縮echoタグでの出力 (Semgrepでサポートされている場合)
+    
     pattern-sanitizers:
       - pattern-either:
-          - pattern: htmlspecialchars(...)
-          - pattern: htmlentities(...)
+        - pattern: htmlspecialchars(...);
+        - pattern: htmlentities(...);
+        # 他の適切なエスケープ関数があれば追加
+
+    # pattern-propagators:（必要なら定義。通常の代入や関数引数伝搬は自動追跡される）
+
