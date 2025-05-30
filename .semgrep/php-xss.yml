@@ -5,28 +5,26 @@ rules:
     severity: ERROR
     mode: taint
 
-    # ========== 1) 汚染源 ==========
+    # ① 汚染源：スーパーグローバル
     pattern-sources:
-      - patterns:
+      - pattern-either:
           - pattern: $_GET[..]
           - pattern: $_POST[..]
           - pattern: $_REQUEST[..]
           - pattern: $_COOKIE[..]
 
-    # ========== 2) プロパゲータ ==========
+    # ② プロパゲータ：parse_str() で第2引数に渡った配列
     pattern-propagators:
-      - patterns:
-          - pattern: |
-              parse_str($Q, $ARR)    # $ARR が tainted になる
-          # 必要に応じて urldecode() なども追加可
+      - pattern: |
+          parse_str($QUERY, $ARR)
 
-    # ========== 3) シンク ==========
+    # ③ シンク：echo / print / <?= … ?>
     pattern-sinks:
       - pattern: echo $X
       - pattern: print $X
-      - pattern: <?= $X ?>
+      - pattern: "<?= $X ?>"
 
-    # ========== 4) サニタイザ ==========
+    # ④ サニタイザ：htmlspecialchars / htmlentities
     pattern-sanitizers:
       - pattern-either:
           - pattern: htmlspecialchars(...)
