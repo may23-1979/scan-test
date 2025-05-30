@@ -1,0 +1,14 @@
+rules:
+  - id: php-insecure-sql-query
+    languages: [php]
+    message: "ユーザ入力がエスケープされず SQL クエリに使われています (SQLi)。"
+    severity: ERROR
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET[..]
+    pattern-sinks:
+      - patterns:
+          - pattern: $DB->query($QUERY)
+          - pattern: mysqli_query(..., $QUERY)
+    pattern-sanitizers:
+      - pattern: $DB->prepare(...)

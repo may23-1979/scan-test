@@ -6,27 +6,29 @@ on:
   pull_request:
     branches: ["main"]
   schedule:
-    - cron: "0 0 * * 0"   # 毎週日曜
+    - cron: "0 0 * * 0"     # 毎週日曜
 
-############################################
-# グローバル権限：SARIF をアップロードするため
-############################################
+#############################################
+# 全ジョブ共通で SARIF アップロード権限を付与
+#############################################
 permissions:
   contents: read
   security-events: write
-  actions: read           # private repo なら必須
+  actions: read        # private リポジトリの場合に必要
 
-##########################
-# 1) CodeQL ─ GitHub Actions
-##########################
+###############################################################################
+# 1) CodeQL ─ GitHub Actions (YAML) を解析
+###############################################################################
 jobs:
   codeql:
+    name: CodeQL Analysis
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        language: ['actions']           # JS/TS も CodeQL で解析したい場合は追加
+        language: ["actions"]            # JS/TS も CodeQL で解析したい場合はここに追加
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
@@ -39,86 +41,44 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
 
-
-###########################################
-# 2) Semgrep ─ PHP / JS スキャン + SARIF
-###########################################
+###############################################################################
+# 2) Semgrep ─ PHP / JS をフルスキャンし SARIF をアップロード
+###############################################################################
   semgrep:
+    name: Semgrep SAST Scan
     runs-on: ubuntu-latest
-    container: semgrep/semgrep:latest   # CLI 入り公式イメージ
-
+    container: semgrep/semgrep:latest    # Semgrep CLI 入り公式イメージ
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out code
+        uses: actions/checkout@v4
 
-      #####################################################
-      # カスタム PHP SQLi ルールをリポジトリ内に生成
-      #####################################################
-      - name: Write custom PHP taint rule (SQLi + XSS)
-        run: |
-          mkdir -p .semgrep
-          # --- SQLi ルール ---
-          cat > .semgrep/php-sqli.yml <<'EOF'
-          # ...前回の php-sqli.yml ...
-          EOF
-          # --- XSS ルール ---
-          cat > .semgrep/php-xss.yml <<'EOF'
-          rules:
-            - id: php-xss-output
-              languages: [php]
-              message: "ユーザ入力を HTML に未エスケープで出力しています (XSS)。"
-              severity: ERROR
-              mode: taint
-              pattern-sources:
-                - patterns:
-                    - pattern: $_GET[..]
-                    - pattern: $_POST[..]
-                    - pattern: $_REQUEST[..]
-                    - pattern: $_COOKIE[..]
-              pattern-sinks:
-                - pattern: echo $X
-                - pattern: print $X
-                - pattern: <?= $X ?>
-              pattern-sanitizers:
-                - pattern-either:
-                    - pattern: htmlspecialchars(...)
-                    - pattern: htmlentities(...)
-          EOF
-
-      #####################################################
-      # Semgrep 実行（PHP & JS）―― SARIF を必ず生成
-      #####################################################
+      # PHP または JS ファイルが 1 つ以上ある場合のみ実行
       - name: Run Semgrep scan (PHP + JS)
         id: semgrep
-        continue-on-error: true          # 脆弱性検出で exit=1 でも後続へ
+        if: ${{ hashFiles('**/*.php', '**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != '' }}
+        continue-on-error: true          # 脆弱性検出 (exit≠0) でも後続へ
         run: |
           semgrep scan \
             --config=p/owasp-top-ten \
             --config=p/phpcs-security-audit \
             --config=p/security-audit \
             --config=.semgrep/php-sqli.yml \
+            --config=.semgrep/php-xss.yml \
             --include '**/*.php' \
             --include '**/*.js' \
             --sarif \
             --output semgrep.sarif \
           || true
 
-      #####################################################
-      # SARIF が無い・空ならダミーファイルを生成
-      #####################################################
+      # SARIF が無い / 空ならダミーファイルを生成
       - name: Ensure SARIF exists
         run: |
           if [ ! -s semgrep.sarif ]; then
             echo "::warning ::SARIF が生成されなかったため空レポートを作成します"
-            printf '%s\n' \
-              '{' \
-              '  "version": "2.1.0",' \
-              '  "runs": []' \
-              '}' > semgrep.sarif
+            printf '%s\n' '{' '  "version": "2.1.0",' '  "runs": []' '}' > semgrep.sarif
           fi
 
-      #####################################################
-      # SARIF を Code Scanning へアップロード
-      #####################################################
+      # Semgrep SARIF を GitHub Code Scanning へアップロード
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:

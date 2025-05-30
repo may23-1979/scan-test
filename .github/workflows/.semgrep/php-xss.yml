@@ -1,0 +1,20 @@
+rules:
+  - id: php-xss-output
+    languages: [php]
+    message: "ユーザ入力を HTML に未エスケープで出力しています (XSS)。"
+    severity: ERROR
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          - pattern: $_GET[..]
+          - pattern: $_POST[..]
+          - pattern: $_REQUEST[..]
+          - pattern: $_COOKIE[..]
+    pattern-sinks:
+      - pattern: echo $X
+      - pattern: print $X
+      - pattern: <?= $X ?>
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: htmlspecialchars(...)
+          - pattern: htmlentities(...)
